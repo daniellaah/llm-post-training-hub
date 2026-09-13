@@ -1,0 +1,25 @@
+# Python / uv
+.venv/
+.uv-cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Local configuration
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Downloaded data, model weights, and training outputs
+data/
+models/
+adapters/
+outputs/
+runs/
+wandb/
+*.safetensors
+*.gguf
