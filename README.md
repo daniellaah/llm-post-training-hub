@@ -5,13 +5,13 @@ Mac and measure its effect against a fair baseline. One directory per method, on
 shared benchmark, the same evaluation protocol throughout, so results are comparable
 across stages.
 
-| Method | Directory | Status | Result (GSM8K, Qwen3-0.6B-Base) |
-| ------ | --------- | ------ | -------------------------------- |
-| SFT + LoRA | [`sft/`](sft/README.md) | Done | 48.9% (base, 5-shot) → **68.0%** (zero-shot) |
-| GRPO | `grpo/` | Planned | |
-| DPO | `dpo/` | Planned | |
-| PPO | `ppo/` | Planned | |
-| On-policy distillation | `opd/` | Planned | |
+| Method                 | Directory               | Status  | Result (GSM8K, Qwen3-0.6B-Base)              |
+| ---------------------- | ----------------------- | ------- | -------------------------------------------- |
+| SFT + LoRA             | [`sft/`](sft/README.md) | Done    | 48.9% (base, 5-shot) → **68.0%** (zero-shot) |
+| GRPO                   | `grpo/`                 | Planned |                                              |
+| DPO                    | `dpo/`                  | Planned |                                              |
+| PPO                    | `ppo/`                  | Planned |                                              |
+| On-policy distillation | `opd/`                  | Planned |                                              |
 
 ## Principles
 
@@ -46,6 +46,3 @@ uv run python -c 'import mlx.core as mx; print("Metal available:", mx.metal.is_a
 sft/            supervised fine-tuning (data prep, distillation, training, evaluation, demo)
 pyproject.toml  shared dependencies for every method
 ```
-
-Datasets, model weights, adapters, and evaluation outputs are ignored by git; code,
-configs, and result write-ups are committed.
