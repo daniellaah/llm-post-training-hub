@@ -104,17 +104,30 @@ Per-example predictions and scores go to `outputs/{base,lora}-{N}shot.jsonl`.
 ## 5. Demo
 
 ```bash
-uv run python demo.py
+uv run python demo.py                  # random test question, base vs LoRA
+uv run python demo.py --save demo.svg  # also save the output as an image
 ```
 
-Base model, LoRA model, and reference answer for a random test question.
+![demo.py output: base model vs LoRA model on a GSM8K question](demo.svg)
+
+The base model often gets the number right but does not know when to stop; the
+fine-tuned model answers in the teacher's structured style and ends with `#### <number>`.
 
 ## Results
 
-Qwen3-0.6B-Base, all 1,319 test questions, protocol as above.
+Qwen3-0.6B-Base, all 1,319 test questions, one epoch of training (185 steps of 32).
 
 | Model                    | Strict accuracy | Flexible accuracy | Format compliance |
 | ------------------------ | --------------: | ----------------: | ----------------: |
-| Base, 0-shot             |             TBD |               TBD |               TBD |
-| Base, 5-shot             |             TBD |               TBD |               TBD |
-| LoRA (distilled), 0-shot |             TBD |               TBD |               TBD |
+| Base, 0-shot             |           0.00% |            14.86% |             0.15% |
+| Base, 5-shot             |          48.90% |            50.34% |            95.53% |
+| LoRA (distilled), 0-shot |      **68.01%** |        **68.08%** |            98.10% |
+
+Fine-tuning adds **19.1 points** of strict accuracy over the 5-shot base model.
+The two differ on 446 questions: LoRA is right and Base wrong on 349, the reverse
+on 97 (McNemar exact test, p < 10⁻³³). Truncation is 1.3% for both.
+
+The base model's zero-shot 0% is a format failure, not a math failure: with five
+demonstrations the same weights score 48.9%. That is why the 5-shot number is the
+baseline. The distilled teacher solutions keep 88% of the training questions
+(5,932 of 6,725); validation loss went from 0.644 to 0.201 over the epoch.
