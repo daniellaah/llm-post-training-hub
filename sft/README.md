@@ -4,10 +4,9 @@ Fine-tune Qwen3-0.6B-Base on GSM8K with LoRA and MLX-LM, and measure the effect
 against a fair baseline.
 
 The training data is not the original GSM8K answers but step-by-step solutions
-distilled from a larger teacher (Qwen3-4B). In earlier runs, fine-tuning on the
-original answers reached 51% zero-shot, indistinguishable from the base model with
-5-shot prompting (49%): the base model has already seen GSM8K during pretraining,
-so those answers carry no new information. Detailed teacher solutions do.
+distilled from a larger teacher (Qwen3-4B). The base model has already seen GSM8K's
+terse answers during pretraining, so they carry little it does not know; detailed
+teacher solutions do.
 
 ```
 prepare_data.py   GSM8K → data/{train,valid,test}.jsonl
