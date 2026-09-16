@@ -23,3 +23,6 @@ runs/
 wandb/
 *.safetensors
 *.gguf
+
+# Editor
+.vscode/
