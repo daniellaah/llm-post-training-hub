@@ -1,0 +1,13 @@
+model: Qwen/Qwen3-0.6B-Base
+data: data/distill
+
+fine_tune_type: lora
+num_layers: 16
+seed: 0
+
+# Teacher solutions are ~250 tokens; ~5,900 examples / 32 ≈ 185 steps per epoch.
+batch_size: 32
+learning_rate: 1.0e-5
+
+steps_per_report: 10
+steps_per_eval: 50

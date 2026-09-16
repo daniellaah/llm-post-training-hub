@@ -1,91 +1,137 @@
-"""Evaluate GSM8K accuracy using the final answer after ####."""
+"""Evaluate GSM8K accuracy of the base model or the LoRA adapter."""
 
 import argparse
 import json
 import re
 from pathlib import Path
 
+import mlx.core as mx
 from mlx_lm import batch_generate, load
+from mlx_lm.sample_utils import make_sampler
+
+from prepare_data import DATA_DIR
 
 MODEL_NAME = "Qwen/Qwen3-0.6B-Base"
-BATCH_SIZE = 128
 ADAPTER_PATH = Path(__file__).parent / "adapters"
-TEST_PATH = Path(__file__).parent / "data" / "test.jsonl"
 OUTPUT_DIR = Path(__file__).parent / "outputs"
 
+BATCH_SIZE = 128
+MAX_TOKENS = 1024
 
-def extract_answer(text):
-    match = re.search(r"####\s*([-+]?\d[\d,]*(?:\.\d+)?)", text)
-    if match:
-        return match.group(1).replace(",", "")
-    return None
+NUMBER_PATTERN = r"[-+]?\d[\d,]*(?:\.\d+)?"
 
 
-def load_test_data(limit=None):
-    with open(TEST_PATH, encoding="utf-8") as f:
-        examples = [json.loads(line) for line in f]
-    return examples[:limit]
+def to_number(text):
+    return float(text.replace(",", ""))
+
+
+def extract_strict_answer(text):
+    """The number after '####', the GSM8K convention. None if absent."""
+    match = re.search(rf"####\s*({NUMBER_PATTERN})", text)
+    return to_number(match.group(1)) if match else None
+
+
+def extract_flexible_answer(text):
+    """Best-effort answer: '####', then 'the answer is N', then the last number."""
+    answer = extract_strict_answer(text)
+    if answer is not None:
+        return answer
+
+    matches = re.findall(rf"answer\s*(?:is|:|=)\s*\$?\s*({NUMBER_PATTERN})", text, re.IGNORECASE)
+    if not matches:
+        matches = re.findall(NUMBER_PATTERN, text)
+    return to_number(matches[-1]) if matches else None
+
+
+def load_jsonl(path, limit=None):
+    with open(path, encoding="utf-8") as f:
+        return [json.loads(line) for line in f][:limit]
+
+
+def build_prompt(question, shots):
+    """Plain text, no chat template: the base model has never seen one.
+
+    Few-shot demonstrations show a base model the '#### <number>' convention
+    and when to stop, which it otherwise has no reason to follow.
+    """
+    parts = [f"Question: {shot['question']}\nAnswer: {shot['answer']}" for shot in shots]
+    parts.append(f"Question: {question}\nAnswer:")
+    return "\n\n".join(parts)
+
+
+def clean_prediction(text):
+    """Drop everything from the first invented 'Question:' onward.
+
+    Without a chat template nothing marks the end of the turn, so the model
+    often continues by making up further problems.
+    """
+    return text.split("Question:")[0].strip()
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--adapter", action="store_true")
-    parser.add_argument("--limit", type=int)
+    parser.add_argument("--adapter", action="store_true", help="Evaluate the LoRA adapter.")
+    parser.add_argument("--shots", type=int, default=0, help="Few-shot examples from the training set.")
+    parser.add_argument("--limit", type=int, help="Evaluate only the first N test examples.")
     args = parser.parse_args()
 
-    adapter_path = ADAPTER_PATH if args.adapter else None
+    model, tokenizer = load(MODEL_NAME, adapter_path=str(ADAPTER_PATH) if args.adapter else None)
+    examples = load_jsonl(DATA_DIR / "test.jsonl", args.limit)
+    shots = load_jsonl(DATA_DIR / "train.jsonl", args.shots)
 
-    model, tokenizer = load(MODEL_NAME, adapter_path=adapter_path)
-    tokenizer.add_eos_token("<|im_end|>")
-    examples = load_test_data(args.limit)
-    prompts = [
-        tokenizer.apply_chat_template(
-            [{"role": "user", "content": example["prompt"]}],
-            add_generation_prompt=True,
+    predictions = []
+    for start in range(0, len(examples), BATCH_SIZE):
+        batch = examples[start : start + BATCH_SIZE]
+        prompts = [tokenizer.encode(build_prompt(e["question"], shots)) for e in batch]
+        result = batch_generate(
+            model,
+            tokenizer,
+            prompts=prompts,
+            max_tokens=MAX_TOKENS,
+            sampler=make_sampler(temp=0.0),
+            completion_batch_size=BATCH_SIZE,
+            prefill_batch_size=8,
         )
-        for example in examples
-    ]
-    predictions = batch_generate(
-        model,
-        tokenizer,
-        prompts=prompts,
-        max_tokens=256,
-        completion_batch_size=BATCH_SIZE,
-        prefill_batch_size=BATCH_SIZE,
-        verbose=True,
-    ).texts
+        predictions.extend(result.texts)
+        mx.clear_cache()
+        print(f"Generated {len(predictions)}/{len(examples)}")
 
-    OUTPUT_DIR.mkdir(exist_ok=True)
-    output_path = OUTPUT_DIR / ("lora.jsonl" if adapter_path else "base.jsonl")
-    correct = 0
-
-    with open(output_path, "w", encoding="utf-8") as f:
-        for i, (example, prediction) in enumerate(zip(examples, predictions), start=1):
-            predicted_answer = extract_answer(prediction)
-            gold_answer = extract_answer(example["completion"])
-            is_correct = (
-                predicted_answer is not None and predicted_answer == gold_answer
-            )
-            correct += int(is_correct)
-
-            result = {
+    results = []
+    for example, raw in zip(examples, predictions):
+        prediction = clean_prediction(raw)
+        gold = extract_strict_answer(example["answer"])
+        strict = extract_strict_answer(prediction)
+        flexible = extract_flexible_answer(prediction)
+        results.append(
+            {
                 **example,
                 "prediction": prediction,
-                "predicted_answer": predicted_answer,
-                "gold_answer": gold_answer,
-                "correct": is_correct,
+                "gold": gold,
+                "strict": strict,
+                "flexible": flexible,
+                "strict_correct": strict == gold,
+                "flexible_correct": flexible == gold,
+                "has_format": strict is not None,
+                # batch_generate reports no finish reason; hitting the limit means cut off.
+                "truncated": len(tokenizer.encode(raw)) >= MAX_TOKENS,
             }
-            f.write(json.dumps(result, ensure_ascii=False) + "\n")
+        )
 
-            print(
-                f"{i}/{len(examples)} "
-                f"pred={predicted_answer} "
-                f"gold={gold_answer} "
-                f"correct={is_correct}"
-            )
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    output_path = OUTPUT_DIR / f"{'lora' if args.adapter else 'base'}-{args.shots}shot.jsonl"
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.writelines(f"{json.dumps(r, ensure_ascii=False)}\n" for r in results)
 
-    accuracy = correct / len(examples)
-    print(f"\nAccuracy: {accuracy:.4f}")
+    total = len(results)
+    print(f"\nModel: {'lora' if args.adapter else 'base'}, {args.shots}-shot, {total} examples")
+    for label, key in [
+        ("Strict accuracy", "strict_correct"),
+        ("Flexible accuracy", "flexible_correct"),
+        ("Format compliance", "has_format"),
+        ("Truncated", "truncated"),
+    ]:
+        count = sum(r[key] for r in results)
+        print(f"{label + ':':<19}{count}/{total} ({count / total:.2%})")
     print(f"Results: {output_path}")
 
 
