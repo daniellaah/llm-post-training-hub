@@ -14,7 +14,7 @@ prepare_data.py   GSM8K → data/{train,valid,test}.jsonl
 distill.py        Qwen3-4B solutions → data/distill/{train,valid}.jsonl
 train.py          LoRA, one epoch, loss on the answer only → adapters/
 evaluate.py       base vs LoRA on the test set → outputs/
-demo.py           one random question, side by side
+demo.py           one random question: base (5-shot) vs LoRA (0-shot)
 ```
 
 ## Setup
@@ -108,10 +108,13 @@ uv run python demo.py                  # random test question, base vs LoRA
 uv run python demo.py --save demo.svg  # also save the output as an image
 ```
 
-![demo.py output: base model vs LoRA model on a GSM8K question](demo.svg)
+Same setup as the evaluation: the base model gets the first five training examples
+as demonstrations, the fine-tuned model gets the question alone.
 
-The base model often gets the number right but does not know when to stop; the
-fine-tuned model answers in the teacher's structured style and ends with `#### <number>`.
+![demo.py output: base model (5-shot) vs LoRA model (0-shot) on a GSM8K question](demo.svg)
+
+The base model imitates the terse GSM8K style of its demonstrations; the fine-tuned
+model answers in the teacher's structured style and ends with `#### <number>`.
 
 ## Results
 

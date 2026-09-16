@@ -20,16 +20,19 @@ def main():
     disable_progress_bars()  # hide the "Fetching 7 files" bars printed on model load
 
     example = random.choice(load_jsonl(DATA_DIR / "test.jsonl"))
-    prompt = build_prompt(example["question"], shots=[])
+    shots = load_jsonl(DATA_DIR / "train.jsonl", 5)
     console = Console(markup=False, highlight=False, record=bool(args.save), width=100)
-    console.rule("GSM8K · Base vs LoRA")
+    console.rule("GSM8K · Base (5-shot) vs LoRA (0-shot)")
     console.print(Panel(example["question"], title="Question", border_style="cyan"))
     console.print()
 
-    for name, adapter_path, color in [
-        ("Base model", None, "blue"),
-        ("LoRA model", str(ADAPTER_PATH), "magenta"),
+    # Same setup as the evaluation: the base model gets five worked examples
+    # from the training set, the fine-tuned model gets the question alone.
+    for name, adapter_path, prompt_shots, color in [
+        ("Base model, 5-shot", None, shots, "blue"),
+        ("LoRA model, 0-shot", str(ADAPTER_PATH), [], "magenta"),
     ]:
+        prompt = build_prompt(example["question"], prompt_shots)
         with console.status(f"Generating {name} response..."):
             model, tokenizer = load(MODEL_NAME, adapter_path=adapter_path)
             answer = ""
