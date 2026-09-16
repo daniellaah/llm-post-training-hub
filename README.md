@@ -1,42 +1,51 @@
 # LLM Post-Training Hub
 
-用于验证 LLM post-training 效果的小实验。第一个实验采用 MLX + SFT + LoRA，模型和数据集待定。
+Small, self-contained experiments that train a post-training stage from scratch on a
+Mac and measure its effect against a fair baseline. One directory per method, one
+shared benchmark, the same evaluation protocol throughout, so results are comparable
+across stages.
 
-## 环境
+| Method | Directory | Status | Result (GSM8K, Qwen3-0.6B-Base) |
+| ------ | --------- | ------ | -------------------------------- |
+| SFT + LoRA | [`sft/`](sft/README.md) | Done | 48.9% (base, 5-shot) → **68.0%** (zero-shot) |
+| GRPO | `grpo/` | Planned | |
+| DPO | `dpo/` | Planned | |
+| PPO | `ppo/` | Planned | |
+| On-policy distillation | `opd/` | Planned | |
 
-- 平台：Apple Silicon Mac（原生 arm64），macOS 14 或更新版本。
-- Python：3.14.6，由 `.python-version` 固定；项目限定为 Python 3.14 系列。
-- 环境与依赖管理：uv；虚拟环境位于仓库根目录的 `.venv/`。
-- 训练依赖：`mlx` 和 `mlx-lm[train]`，后者包含数据处理所需的 `datasets` 等依赖。
-- `uv.lock` 固定实际解析的依赖版本，应纳入版本控制。
+## Principles
 
-Python 3.14 是当前稳定维护版本，MLX 提供 CPython 3.14 的 macOS ARM64 安装包。
-参考：[Python 版本状态](https://devguide.python.org/versions/) · [MLX 安装说明](https://ml-explore.github.io/mlx/build/html/install.html)。
+- **Train it yourself.** Every directory produces its own weights from a base model;
+  nothing is downloaded pre-tuned.
+- **Fair baseline.** A base model is evaluated with few-shot prompting; zero-shot it
+  does not know the answer format, and its score would measure format, not ability.
+  Trained models are evaluated zero-shot and compared against that number.
+- **Same ruler everywhere.** Full test set, greedy decoding, one answer-extraction
+  rule, and paired significance tests. Later stages (GRPO, DPO, ...) start from the
+  SFT model and reuse `sft/evaluate.py`.
+- **Small enough to read.** Each method is a handful of short scripts and one config;
+  MLX-LM's training loop is reused rather than reimplemented.
 
-## 使用
+## Environment
 
-在仓库根目录执行：
+- Apple Silicon Mac (native arm64), macOS 14 or newer.
+- Python 3.14, pinned in `.python-version`; managed with [uv](https://docs.astral.sh/uv/).
+- [MLX](https://github.com/ml-explore/mlx) and [MLX-LM](https://github.com/ml-explore/mlx-lm)
+  for inference and LoRA training. `uv.lock` pins the resolved versions.
 
 ```bash
 uv sync --locked
-uv run python --version
-uv run mlx_lm.lora --help
-```
-
-`uv run` 会使用项目虚拟环境，无需手动激活。需要在交互式终端激活时可执行：
-
-```bash
-source .venv/bin/activate
-```
-
-快速检查 Metal GPU 是否可用：
-
-```bash
 uv run python -c 'import mlx.core as mx; print("Metal available:", mx.metal.is_available())'
 ```
 
-## 实验目录
+`uv run` uses the project virtual environment; there is no need to activate it.
 
-- [`sft/`](sft/README.md)：第一个 SFT + LoRA 实验。
+## Layout
 
-模型、数据和训练产物由 `.gitignore` 排除；实验代码、配置及结果说明应纳入版本控制。
+```
+sft/            supervised fine-tuning (data prep, distillation, training, evaluation, demo)
+pyproject.toml  shared dependencies for every method
+```
+
+Datasets, model weights, adapters, and evaluation outputs are ignored by git; code,
+configs, and result write-ups are committed.
